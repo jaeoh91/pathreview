@@ -68,3 +68,55 @@ Write the PR description (documenting the pre-existing failures above per the We
 **Blockers:**
 None — the pre-existing `make check`/`make test-unit` failures don't block this PR (they predate it and aren't in files this PR touches), just need to be called out explicitly in the PR description.
 
+---
+
+### Check-in 2 (end of week)
+
+**PR link:** https://github.com/ascherj/pathreview/pull/1016
+
+**Branch:** `test/71-prompt-injection-red-team`
+
+**What you built:** A curated 31-fixture red-team corpus for `PromptDefense` (`tests/fixtures/injection_attempts/`, 6 categories) plus `tests/security/test_prompt_injection.py`, a deterministic loader with parametrized `detect`/`sanitize` tests, and an unconditional `test-security` job in `ci.yml` so future changes to `safety/` can't silently weaken the defense.
+
+**Tests added or updated:** `tests/security/test_prompt_injection.py` (new) — 32 tests, 32 passing. No existing test files modified.
+
+**Self-review confirmation:** [x] make check passes  [x] make test-unit passes
+(Both in the "no new failures" sense per this week's pre-existing-failure guidance: `make test-unit` has 53 pre-existing failures across 16 modules never touched by this PR; `make check` has 182 pre-existing `ruff` errors, 52 files `black` would reformat, and a `make typecheck` failure caused by a broken local `.venv`/numpy mismatch — none in files this PR added or touched. The `pre-commit` hook's own `ruff`/`black`/`mypy` run passed cleanly on the actual commit.)
+
+**Draft PR feedback received from:** none
+
+---
+
+## Week 10 — Iteration & reflection
+
+### Reviewer feedback
+
+**Feedback received:** [ ] Yes  [x] No — still awaiting review
+
+**Summary of feedback:**
+No reviewer or maintainer comments came in on [PR #1016](https://github.com/ascherj/pathreview/pull/1016) by the Week 10 deadline. Per the Su26 note, formal reviewer feedback isn't an active feature this term. No peer/mentor feedback came in via Slack either, despite sharing the draft PR link as the Week 9 assignment asked.
+
+**How you responded:**
+N/A — no feedback to respond to.
+
+---
+
+### Reflection
+
+**What was harder than you expected?**
+Verifying the fixture corpus against the actual regex, rather than reasoning about it by eye. My first draft of a case-variant fixture (`"SYSTEM  :  ignore"`, with a space before the colon) looked like it should still match under case-insensitivity and whitespace tolerance, but it wouldn't have — the role-switching pattern doesn't allow whitespace between the word and the colon at all. I only caught this by running every fixture against the real `PromptDefense` class instead of trusting my own read of the regex, which turned out to matter: an existing unit test in the repo (`test_whitespace_variations_detected`) has exactly this bug and is currently failing because of it. It was a good reminder that "I read the regex, this should match" isn't the same as "I ran it and confirmed it matches."
+
+**What did you learn about working in a large codebase?**
+The gap between "this class is tested" and "this class is actually used" was the biggest surprise. Grepping across `agent/`, `ingestion/`, `rag/`, `api/`, and `core/` for `from safety`/`import safety` turned up only test files — `PromptDefense` isn't called anywhere in the running app. That's a bigger finding than the fixture-writing work itself, and it's the kind of thing that's easy to miss in your own project (you'd remember whether you wired something up) but invisible in someone else's, where a well-tested-looking module can be completely disconnected from the code path that actually processes user input.
+I also ran into two different "type checker failed" signals that print near-identical mypy tracebacks but mean opposite things: `make typecheck` failing on a numpy/Python-version mismatch in a stale local `.venv` (an environment problem, unrelated to any code I wrote) versus the `pre-commit` mypy hook — a separate, isolated environment — correctly catching a real missing-type-annotation issue in my new test file. Telling those apart took actually running both and comparing, not just reading the first error message and assuming the codebase (or my code) was broken.
+
+**How did AI tools help — and where did they fall short?**
+Most useful for high-volume, verifiable grunt work: drafting a 31-fixture corpus across six attack categories, then re-verifying every single fixture against the real `PromptDefense.is_injection_attempt()`/`sanitize()` output rather than trusting hand-reasoning about what the regex "should" do. That verification loop is what caught the whitespace-variant bug before it became a false claim baked into test metadata.
+It fell short on the actual judgment calls. Whether the `known_gaps` fixtures should use `pytest.mark.xfail` or a plain assertion against today's real (bypassed) behavior was flagged as genuinely undecided in `PLAN.md`, and that's a call about how a future reviewer will read the test suite — not something to auto-pick for "best practice." Scoping decisions (e.g., documenting the leading-newline bypass and the disconnected `PromptDefense` wiring instead of fixing either) were the same kind of call. AI was useful for laying out the tradeoffs; the decision itself had to be mine.
+
+**What would you do differently if you started over?**
+I'd resolve the `known_gaps` xfail-vs-plain-assertion question during Week 8 planning instead of leaving it flagged as "not yet decided" going into implementation — it ended up blocking the first line of test code I could write in Week 9. I'd also write each week's JOURNAL entry in the week it actually happens; I ended up backfilling the Week 8 reproduction entry during Week 9 because it hadn't been written at the time, which meant reconstructing it from `PLAN.md` after the fact instead of capturing it fresh.
+
+**What are you most proud of from this module?**
+That every fixture in the corpus is independently checkable, not just trusted by construction — each one was run against the real `PromptDefense` class before it went into the suite, so the corpus documents actual behavior rather than my assumptions about the regex. A close second: choosing to document the two out-of-scope gaps (the leading-newline detection bypass and `PromptDefense` never being wired into the app) clearly in `PLAN.md` and the PR description instead of quietly ignoring them because they weren't technically part of issue #71.
+
